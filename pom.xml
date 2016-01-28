@@ -846,7 +846,7 @@
             <dependency>
                 <groupId>org.jboss.remoting</groupId>
                 <artifactId>jboss-remoting</artifactId>
-                <version>4.0.20.Final-20160128.183324-1</version>
+                <version>4.0.18.Final</version>
             </dependency>
 
             <!-- Modules in this project -->
