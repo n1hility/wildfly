@@ -40,6 +40,7 @@ import org.jboss.as.ejb3.logging.EjbLogger;
 import org.jboss.as.network.ClientMapping;
 import org.jboss.as.security.remoting.RemoteConnection;
 import org.jboss.ejb.client.Affinity;
+import org.jboss.ejb.client.ClusterAffinity;
 import org.jboss.ejb.client.EJBClientInvocationContext;
 import org.jboss.ejb.client.EJBIdentifier;
 import org.jboss.ejb.client.EJBLocator;
@@ -57,6 +58,7 @@ import org.jboss.ejb.server.Request;
 import org.jboss.ejb.server.SessionOpenRequest;
 import org.jboss.invocation.InterceptorContext;
 import org.jboss.remoting3.Connection;
+import org.wildfly.clustering.group.Group;
 import org.wildfly.clustering.registry.Registry;
 import org.wildfly.common.annotation.NotNull;
 import org.wildfly.security.auth.server.SecurityIdentity;
@@ -86,10 +88,12 @@ final class AssociationImpl implements Association, AutoCloseable {
 
     private final DeploymentRepository deploymentRepository;
     private final ClusterTopologyRegistrar clusterTopologyRegistrar;
+    private final Registry<String, List<ClientMapping>> clientMappingRegistry;
     private volatile Executor executor;
 
     AssociationImpl(final DeploymentRepository deploymentRepository, final Registry<String, List<ClientMapping>> clientMappingRegistry) {
         this.deploymentRepository = deploymentRepository;
+        this.clientMappingRegistry = clientMappingRegistry;
         this.clusterTopologyRegistrar = (clientMappingRegistry != null) ? new ClusterTopologyRegistrar(clientMappingRegistry) : null;
     }
 
@@ -231,7 +235,7 @@ final class AssociationImpl implements Association, AutoCloseable {
                     weakAffinity = getWeakAffinity(statefulSessionComponent, ejbLocator.asStateful());
                 } else if (componentView.getComponent() instanceof StatelessSessionComponent) {
                     final StatelessSessionComponent statelessSessionComponent = (StatelessSessionComponent) componentView.getComponent();
-                    weakAffinity = statelessSessionComponent.getWeakAffinity();
+                    weakAffinity = getWeakStatelessAffinity();
                 }
                 if (weakAffinity != null && !weakAffinity.equals(Affinity.NONE)) {
                     attachments.put(Affinity.WEAK_AFFINITY_CONTEXT_KEY, weakAffinity);
@@ -518,6 +522,13 @@ final class AssociationImpl implements Association, AutoCloseable {
     private static Affinity getWeakAffinity(final StatefulSessionComponent statefulSessionComponent, final StatefulEJBLocator<?> statefulEJBLocator) {
         final SessionID sessionID = statefulEJBLocator.getSessionId();
         return statefulSessionComponent.getCache().getWeakAffinity(sessionID);
+    }
+
+    private Affinity getWeakStatelessAffinity() {
+        Registry<String, List<ClientMapping>> registry = this.clientMappingRegistry;
+        Group group = registry != null ? registry.getGroup() : null;
+
+        return group != null && !group.isLocal() ? new ClusterAffinity(group.getName()) : Affinity.NONE;
     }
 
     Executor getExecutor() {
